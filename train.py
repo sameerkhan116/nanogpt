@@ -1,6 +1,15 @@
 import torch
 import torch.nn as nn
 
+# Variables
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+batch_size, block_size = 32, 8
+max_iters = 10000
+eval_interval = 300
+learning_rate = 1e-2
+eval_iters = 200
+
+# Basic setup
 with open('input.txt', 'r', encoding='utf-8') as f:
     text = f.read()
 chars = sorted(list(set(text)))
@@ -10,13 +19,12 @@ def encode(s): return [stoi[c] for c in s]
 def decode(l): return ''.join([itos[i] for i in l])
 
 
+# split training and evaluation data
+torch.manual_seed(1337)
 data = torch.tensor(encode(text), dtype=torch.long)
 n = int(0.9 * len(data))
 train_data = data[:n]
 eval_data = data[n:]
-
-torch.manual_seed(1337)
-batch_size, block_size = 4, 8
 
 
 def get_batch(split):
@@ -24,15 +32,25 @@ def get_batch(split):
     ix = torch.randint(len(data) - block_size, (batch_size,))
     x = torch.stack([data[i:i+block_size] for i in ix])
     y = torch.stack([data[i+1:i+block_size+1] for i in ix])
+    x, y = x.to(device), y.to(device)
     return x, y
 
 
-xb, yb = get_batch('train')
-# print(xb.shape)
-# print(xb)
-# print("----")
-# print(yb.shape)
-# print(yb)
+@torch.no_grad()
+def estimate_loss():
+    out = {}
+    m.eval()
+
+    for split in ['train', 'val']:
+        losses = torch.zeros(eval_iters)
+        for k in range(eval_iters):
+            X, Y = get_batch(split)
+            _, loss = m(X, Y)
+            losses[k] = loss.item()
+        out[split] = losses.mean()
+
+    m.train()
+    return out
 
 
 class BigramLM(nn.Module):
@@ -63,6 +81,20 @@ class BigramLM(nn.Module):
 
 
 m = BigramLM(65)
-idx = torch.zeros((1, 1), dtype=torch.long)
-generation = m.generate(idx, max_new_tokens=100)[0]
-print(generation)
+m = m.to(device)
+optimizer = torch.optim.AdamW(m.parameters(), lr=1e-3)
+idx = torch.zeros((1, 1), dtype=torch.long, device=device)
+
+for step in range(max_iters):
+    if step % eval_interval == 0:
+        losses = estimate_loss()
+        print(
+            f"step {step}: training loss {losses['train']:.4f}, val loss: {losses['val']:.4f}")
+    xb, yb = get_batch('train')
+    logits, loss = m(xb, yb)
+    optimizer.zero_grad(set_to_none=True)
+    loss.backward()
+    optimizer.step()
+
+generation = m.generate(idx, max_new_tokens=300)[0].tolist()
+print(decode(generation))
