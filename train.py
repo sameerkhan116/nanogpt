@@ -97,14 +97,17 @@ for step in range(max_iters):
     optimizer.step()
 
 generation = m.generate(idx, max_new_tokens=500)[0].tolist()
-# print(decode(generation))
 
+# mathematical trick of self-attention
 B, T, C = 4, 8, 2
 x = torch.randn(B, T, C)
 xbow = torch.zeros((B, T, C))  # bow->bag of words
-print(xbow)
-print(x)
-# for b in range(B):
-#     for t in range(T):
-#         xprev = x[b, :t+1]
-#         xbow[b, t] = torch.mean(xprev, 0)
+wei = torch.tril((torch.ones(T, T)))
+# wei = torch.zeros((T, T))
+# wei = wei / torch.sum(wei, 1, keepdim=True)
+wei = wei.masked_fill(wei == 0, float('-inf'))
+wei = nn.functional.softmax(wei, dim=-1)
+# xbow2 = wei @ x
+# print(xbow2)
+
+xbow3 = wei @ x
