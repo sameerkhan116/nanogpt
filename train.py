@@ -96,5 +96,15 @@ for step in range(max_iters):
     loss.backward()
     optimizer.step()
 
-generation = m.generate(idx, max_new_tokens=300)[0].tolist()
-print(decode(generation))
+generation = m.generate(idx, max_new_tokens=500)[0].tolist()
+# print(decode(generation))
+
+B, T, C = 4, 8, 2
+x = torch.randn(B, T, C)
+xbow = torch.zeros((B, T, C))  # bow->bag of words
+print(xbow)
+print(x)
+# for b in range(B):
+#     for t in range(T):
+#         xprev = x[b, :t+1]
+#         xbow[b, t] = torch.mean(xprev, 0)
