@@ -106,7 +106,7 @@ for step in range(max_iters):
     loss.backward()
     optimizer.step()
 
-generation = m.generate(idx, max_new_tokens=500)[0].tolist()
+# generation = m.generate(idx, max_new_tokens=500)[0].tolist()
 
 # mathematical trick of self-attention
 B, T, C = 4, 8, 2
@@ -116,7 +116,8 @@ x = torch.randn(B, T, C)
 head_size = 16
 key = nn.Linear(C, head_size, bias=False)
 query = nn.Linear(C, head_size, bias=False)
-k, q = key(x), query(x)
+value = nn.Linear(C, head_size, bias=False)
+k, q, v = key(x), query(x), value(x)
 wei = q @ k.transpose(-2, -1)  # (B, T, 16) @ (B, 16, T) ---> (B, T, T)
 
 # xbow = torch.zeros((B, T, C))  # bow->bag of words
@@ -129,4 +130,6 @@ wei = nn.functional.softmax(wei, dim=-1)
 # xbow2 = wei @ x
 # print(xbow2)
 
-out = wei @ x
+out = wei @ v
+print(out.shape)
+print(out)
