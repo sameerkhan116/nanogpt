@@ -8,6 +8,8 @@ max_iters = 10000
 eval_interval = 300
 learning_rate = 1e-2
 eval_iters = 200
+vocab_size = 65
+n_embed = 32
 
 # Basic setup
 with open('input.txt', 'r', encoding='utf-8') as f:
@@ -54,12 +56,20 @@ def estimate_loss():
 
 
 class BigramLM(nn.Module):
-    def __init__(self, vocab_size):
+    def __init__(self):
         super().__init__()
-        self.token_embedding_table = nn.Embedding(vocab_size, vocab_size)
+        self.token_embedding_table = nn.Embedding(vocab_size, n_embed)
+        self.position_embedding_table = nn.Embedding(block_size, n_embed)
+        self.lm_head = nn.Linear(n_embed, vocab_size)
 
     def forward(self, idx, target=None):
-        logits = self.token_embedding_table(idx)
+        B, T = idx.shape
+
+        tok_emb = self.token_embedding_table(idx)
+        pos_emb = self.position_embedding_table(torch.arange(T, device=device))
+        x = tok_emb + pos_emb
+        logits = self.lm_head(x)
+
         if target is None:
             loss = None
         else:
@@ -80,7 +90,7 @@ class BigramLM(nn.Module):
         return idx
 
 
-m = BigramLM(65)
+m = BigramLM()
 m = m.to(device)
 optimizer = torch.optim.AdamW(m.parameters(), lr=1e-3)
 idx = torch.zeros((1, 1), dtype=torch.long, device=device)
@@ -101,13 +111,22 @@ generation = m.generate(idx, max_new_tokens=500)[0].tolist()
 # mathematical trick of self-attention
 B, T, C = 4, 8, 2
 x = torch.randn(B, T, C)
-xbow = torch.zeros((B, T, C))  # bow->bag of words
-wei = torch.tril((torch.ones(T, T)))
+
+# single head to perform self-attention
+head_size = 16
+key = nn.Linear(C, head_size, bias=False)
+query = nn.Linear(C, head_size, bias=False)
+k, q = key(x), query(x)
+wei = q @ k.transpose(-2, -1)  # (B, T, 16) @ (B, 16, T) ---> (B, T, T)
+
+# xbow = torch.zeros((B, T, C))  # bow->bag of words
+tril = torch.tril((torch.ones(T, T)))
 # wei = torch.zeros((T, T))
 # wei = wei / torch.sum(wei, 1, keepdim=True)
-wei = wei.masked_fill(wei == 0, float('-inf'))
+wei = wei.masked_fill(tril == 0, float('-inf'))
+# wei = nn.functional.softmax(wei, dim=-1)
 wei = nn.functional.softmax(wei, dim=-1)
 # xbow2 = wei @ x
 # print(xbow2)
 
-xbow3 = wei @ x
+out = wei @ x
